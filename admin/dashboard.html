@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dashboard | Green Sparrow</title><meta name="robots" content="noindex,nofollow">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600..800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="admin.css"></head>
+<body><div class="app">
+<aside class="sb" id="sb">
+ <div class="brand"><img src="../assets/logo.png" alt="" onerror="this.remove()">Green Sparrow</div>
+ <nav class="nv" id="nv"></nav>
+ <div class="me"><b id="who">…</b><a href="../index.html" target="_blank">View website ↗</a> &nbsp;·&nbsp; <button id="out">Sign out</button></div>
+</aside>
+<main class="main">
+ <div class="top"><button class="burger" id="bg">☰</button>
+  <h1 id="ttl">Overview</h1>
+  <div class="srch">🔍<input id="q" placeholder="Search name, email, phone…"></div>
+  <button class="btn ghost sm" id="csv">⬇ Export CSV</button></div>
+ <div id="demoBar" class="note demo hide" style="margin-bottom:18px">Demo mode: showing sample data. Add your Firebase config in <b>firebase-config.js</b> to see real submissions.</div>
+ <section id="v-overview">
+  <div class="stats" id="stats"></div>
+  <div class="grid2"><div class="card"><h3>Submissions, last 14 days</h3><canvas id="c1" height="120"></canvas></div>
+   <div class="card"><h3>Services people ask for</h3><canvas id="c2" height="200"></canvas></div></div>
+  <div class="card"><h3>Recent activity</h3><div class="act" id="act"></div></div>
+ </section>
+ <section id="v-list" class="hide">
+  <div class="bar"><div class="chips" id="chips"></div></div>
+  <div class="card tw"><table><thead id="th"></thead><tbody id="tb"></tbody></table><div id="em" class="empty hide"><b>🌿</b>Nothing here yet.</div></div>
+ </section>
+</main></div>
+<div class="dr-bg" id="bgd"></div>
+<aside class="dr" id="dr"><header><div class="av" id="dav"></div><h3 id="dn"></h3><button id="dx" style="font-size:22px">×</button></header>
+ <div class="bdy" id="db"></div>
+ <footer id="df"></footer></aside>
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="../firebase-config.js"></script>
+<script>
+var $=function(i){return document.getElementById(i)},live=GS_CONFIGURED(),db,auth;
+var TABS=[
+ {k:'overview',n:'Overview',i:'📊'},
+ {k:'enquiries',n:'Project Enquiries',i:'📩',c:'#678c3b',cols:['Name','Contact','Needs','Budget','Received','Status'],
+  row:function(d){return [nm(d,d.company),ct(d),(d.services||'').split(', ').slice(0,2).join(', '),d.budget||'-',ago(d),st(d)]}},
+ {k:'consultations',n:'Consultations',i:'📅',c:'#f4b041',cols:['Name','Topic','Meeting','Mode','Received','Status'],
+  row:function(d){return [nm(d,d.phone),d.topic||'-',(d.date||'')+'<small>'+(d.time||'')+'</small>',d.mode||'-',ago(d),st(d)]}},
+ {k:'messages',n:'Contact Messages',i:'💬',c:'#df561f',cols:['Name','Contact','Service','Message','Received','Status'],
+  row:function(d){return [nm(d),ct(d),d.service||'-',esc((d.message||'').slice(0,60))+'…',ago(d),st(d)]}},
+ {k:'subscribers',n:'Subscribers',i:'✉️',c:'#2c3e2f',cols:['Email','Signed up from','Received','Status'],
+  row:function(d){return ['<div class="nm"><div class="av">'+esc((d.email||'?')[0].toUpperCase())+'</div>'+esc(d.email)+'</div>',esc(d.page||''),ago(d),st(d)]}}
+];
+var data={enquiries:[],consultations:[],messages:[],subscribers:[]},cur='overview',flt='all',ch1,ch2,open=null;
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function ts(d){var t=d.createdAt;return t&&t.toDate?t.toDate():(t?new Date(t):new Date())}
+function ago(d){var s=(Date.now()-ts(d))/1000;if(s<60)return'Just now';if(s<3600)return Math.floor(s/60)+' min ago';if(s<86400)return Math.floor(s/3600)+' hr ago';return ts(d).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}
+function st(d){return '<span class="pill s-'+(d.status||'new')+'">'+(d.status||'new')+'</span>'}
+function nm(d,sub){return '<div class="nm"><div class="av">'+esc((d.name||'?')[0].toUpperCase())+'</div><div>'+esc(d.name)+(sub?'<small>'+esc(sub)+'</small>':'')+'</div></div>'}
+function ct(d){return esc(d.email||'')+'<small>'+esc(d.phone||'')+'</small>'}
+function toast(t){var e=$('toast');e.textContent=t;e.classList.add('on');setTimeout(function(){e.classList.remove('on')},2400)}
+function all(){var a=[];TABS.slice(1).forEach(function(t){data[t.k].forEach(function(d){a.push({t:t,d:d})})});return a.sort(function(x,y){return ts(y.d)-ts(x.d)})}
+function newCount(k){return data[k].filter(function(d){return (d.status||'new')==='new'}).length}
+
+function nav(){$('nv').innerHTML=TABS.map(function(t){var n=t.k==='overview'?0:newCount(t.k);
+ return '<button data-k="'+t.k+'" class="'+(t.k===cur?'on':'')+'"><span class="ic">'+t.i+'</span>'+t.n+(n?'<span class="bd">'+n+'</span>':'')+'</button>'}).join('')}
+$('nv').onclick=function(e){var b=e.target.closest('button');if(b)go(b.dataset.k)};
+function go(k){cur=k;flt='all';$('q').value='';$('sb').classList.remove('on');render()}
+
+function render(){nav();var t=TABS.filter(function(x){return x.k===cur})[0];$('ttl').textContent=t.n;
+ $('v-overview').classList.toggle('hide',cur!=='overview');$('v-list').classList.toggle('hide',cur==='overview');
+ cur==='overview'?overview():list(t)}
+
+function overview(){
+ $('stats').innerHTML=TABS.slice(1).map(function(t){var n=newCount(t.k);return '<div class="st" style="--c:'+t.c+'" onclick="go(\''+t.k+'\')"><div class="ico">'+t.i+'</div><b>'+data[t.k].length+'</b><span>'+t.n+'</span><br><small>'+n+' new</small></div>'}).join('');
+ var days=[],cnt=[],i;for(i=13;i>=0;i--){var d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-i);days.push(d)}
+ var arr=all();cnt=days.map(function(d){var e=new Date(d);e.setDate(e.getDate()+1);return arr.filter(function(x){var t=ts(x.d);return t>=d&&t<e}).length});
+ var sv={};data.enquiries.forEach(function(d){(d.services||'').split(', ').forEach(function(s){if(s)sv[s]=(sv[s]||0)+1})});
+ data.consultations.forEach(function(d){if(d.topic)sv[d.topic]=(sv[d.topic]||0)+1});
+ var keys=Object.keys(sv).sort(function(a,b){return sv[b]-sv[a]}).slice(0,6);
+ if(ch1)ch1.destroy();if(ch2)ch2.destroy();
+ var g=$('c1').getContext('2d'),gr=g.createLinearGradient(0,0,0,260);gr.addColorStop(0,'#678c3b66');gr.addColorStop(1,'#678c3b00');
+ ch1=new Chart(g,{type:'line',data:{labels:days.map(function(d){return d.toLocaleDateString('en-IN',{day:'numeric',month:'short'})}),datasets:[{data:cnt,borderColor:'#678c3b',backgroundColor:gr,fill:true,tension:.4,pointBackgroundColor:'#f4b041',pointRadius:4,borderWidth:3}]},options:{plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{precision:0},grid:{color:'#eee'}},x:{grid:{display:false}}}}});
+ ch2=new Chart($('c2'),{type:'doughnut',data:{labels:keys,datasets:[{data:keys.map(function(k){return sv[k]}),backgroundColor:['#678c3b','#f4b041','#df561f','#2c3e2f','#a5c27a','#e8d5a3'],borderWidth:3,borderColor:'#fff'}]},options:{cutout:'66%',plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}}}}});
+ $('act').innerHTML=arr.slice(0,8).map(function(x,j){var d=x.d;return '<div onclick="show(\''+x.t.k+'\','+data[x.t.k].indexOf(d)+')"><div class="av" style="background:'+x.t.c+'">'+esc((d.name||d.email||'?')[0].toUpperCase())+'</div><div>'+esc(d.name||d.email)+'<small>'+x.t.n+' · '+esc(d.topic||d.service||(d.services||'').split(', ')[0]||d.page||'')+'</small></div><em>'+ago(d)+'</em></div>'}).join('')||'<div class="empty">No activity yet.</div>'}
+
+function rows(t){var q=$('q').value.toLowerCase();return data[t.k].filter(function(d){return (flt==='all'||(d.status||'new')===flt)&&(!q||JSON.stringify(d).toLowerCase().indexOf(q)>-1)})}
+function list(t){var f=['all','new','contacted','won','closed'];
+ $('chips').innerHTML=f.map(function(s){return '<button class="chip '+(s===flt?'on':'')+'" data-s="'+s+'">'+s[0].toUpperCase()+s.slice(1)+'</button>'}).join('');
+ $('th').innerHTML='<tr>'+t.cols.map(function(c){return '<th>'+c+'</th>'}).join('')+'</tr>';
+ var r=rows(t);$('em').classList.toggle('hide',r.length>0);
+ $('tb').innerHTML=r.map(function(d){return '<tr onclick="show(\''+t.k+'\','+data[t.k].indexOf(d)+')">'+t.row(d).map(function(c){return '<td>'+c+'</td>'}).join('')+'</tr>'}).join('')}
+$('chips').onclick=function(e){var b=e.target.closest('button');if(b){flt=b.dataset.s;render()}};
+$('q').oninput=function(){if(cur==='overview')go('enquiries');else render()};
+
+function show(k,i){var d=data[k][i];if(!d)return;open={k:k,d:d};var skip={id:1,createdAt:1,status:1,form:1};
+ $('dav').textContent=(d.name||d.email||'?')[0].toUpperCase();$('dn').textContent=d.name||d.email;
+ $('db').innerHTML='<div class="kv"><span>Received</span><p>'+ts(d).toLocaleString('en-IN')+'</p></div><div class="kv"><span>Type</span><p>'+esc(d.form||k)+'</p></div>'+
+  Object.keys(d).filter(function(x){return!skip[x]&&d[x]}).map(function(x){return '<div class="kv"><span>'+x+'</span><p>'+esc(d[x])+'</p></div>'}).join('');
+ var wa=(d.phone||'').replace(/\D/g,'');if(wa.length===10)wa='91'+wa;
+ $('df').innerHTML=(k!=='subscribers'?'<select id="ss">'+['new','contacted','won','closed'].map(function(s){return '<option '+(s===(d.status||'new')?'selected':'')+'>'+s+'</option>'}).join('')+'</select>':'')+
+  (d.email?'<a class="btn sm" href="mailto:'+esc(d.email)+'">Email</a>':'')+(wa?'<a class="btn sm ghost" target="_blank" href="https://wa.me/'+wa+'">WhatsApp</a><a class="btn sm ghost" href="tel:'+esc(d.phone)+'">Call</a>':'')+'<button class="btn sm red" id="del">Delete</button>';
+ $('dr').classList.add('on');$('bgd').classList.add('on');
+ if($('ss'))$('ss').onchange=function(){upd(this.value)};$('del').onclick=del}
+function shut(){$('dr').classList.remove('on');$('bgd').classList.remove('on')}
+$('dx').onclick=$('bgd').onclick=shut;
+function upd(s){var o=open;o.d.status=s;if(live)db.collection(o.k).doc(o.d.id).update({status:s});toast('Marked as '+s);render()}
+function del(){if(!confirm('Delete this entry permanently?'))return;var o=open;
+ if(live)db.collection(o.k).doc(o.d.id).delete();else data[o.k]=data[o.k].filter(function(x){return x!==o.d});shut();toast('Deleted');render()}
+
+$('csv').onclick=function(){var t=TABS.filter(function(x){return x.k===cur})[0];if(cur==='overview'){toast('Open a section to export it');return}
+ var r=rows(t);if(!r.length){toast('Nothing to export');return}
+ var keys=[];r.forEach(function(d){Object.keys(d).forEach(function(k){if(k!=='id'&&keys.indexOf(k)<0)keys.push(k)})});
+ var c=[keys.join(',')].concat(r.map(function(d){return keys.map(function(k){var v=k==='createdAt'?ts(d).toISOString():d[k];return '"'+String(v==null?'':v).replace(/"/g,'""')+'"'}).join(',')})).join('\n');
+ var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:'text/csv'}));a.download='green-sparrow-'+cur+'.csv';a.click()};
+$('bg').onclick=function(){$('sb').classList.toggle('on')};
+
+function start(u){$('who').textContent=u;render()}
+function demo(){$('demoBar').classList.remove('hide');var now=Date.now(),H=36e5,S=['Branding & Identity','Social Media Marketing','Website Design','Digital Advertising','Print & Packaging','Content Creation'],N=['Aarav Mehta','Priya Nair','Rohan Desai','Sneha Kulkarni','Vikram Shah','Anjali Rao','Kabir Malhotra','Isha Patel'];
+ function mk(i,x){return Object.assign({id:'d'+Math.random(),name:N[i%8],email:N[i%8].split(' ')[0].toLowerCase()+'@example.com',phone:'98200'+(10000+i*137),status:['new','new','contacted','won','closed'][i%5],createdAt:new Date(now-(i*7+2)*H*(1+i%3))},x)}
+ for(var i=0;i<12;i++){data.enquiries.push(mk(i,{form:'Project Enquiry',company:['Kravvia','Risa NX','Nivant Agro','Herbiage'][i%4],services:S[i%6]+', '+S[(i+2)%6],budget:['₹25,000 – ₹75,000','₹75,000 – ₹2,00,000','Not sure yet'][i%3],timeline:'Within 1 month',details:'We want a fresh identity and social presence for our new product line.',page:'index.html'}));
+  if(i<8){data.consultations.push(mk(i+3,{form:'Free Consultation Request',topic:S[i%6],date:'2026-10-0'+(i+1),time:'10:00 AM – 12:00 PM',mode:['Phone call','Video call','In person (Mumbai)'][i%3],message:'Would love to discuss packaging refresh.',page:'service.html'}))}
+  if(i<7){data.messages.push(mk(i+5,{form:'Contact Page Message',service:['Brand Identity','Photography','Printing'][i%3],message:'Hi team, could you share pricing and timelines for a full rebrand? Thanks!',page:'contact.html'}))}
+  if(i<10){data.subscribers.push({id:'s'+i,email:'reader'+i+'@example.com',page:'blog.html',status:'new',createdAt:new Date(now-i*9*H)})}}
+ start('demo@greensparrow.in')}
+
+if(!live){if(sessionStorage.getItem('gs_demo'))demo();else location.href='login.html'}
+else{firebase.initializeApp(GS_FIREBASE);auth=firebase.auth();db=firebase.firestore();
+ auth.onAuthStateChanged(function(u){if(!u){location.href='login.html';return}
+  db.doc('admins/'+u.uid).get().then(function(s){if(!s.exists){auth.signOut().then(function(){location.href='login.html?denied=1'});return}
+   start(u.email);TABS.slice(1).forEach(function(t){var first=true;
+    db.collection(t.k).orderBy('createdAt','desc').onSnapshot(function(sn){
+     if(!first)sn.docChanges().forEach(function(c){if(c.type==='added'&&!c.doc.metadata.hasPendingWrites)toast('🔔 New '+t.n.replace(/s$/,'')+' received')});first=false;
+     data[t.k]=sn.docs.map(function(x){return Object.assign({id:x.id},x.data({serverTimestamps:'estimate'}))});render()},
+     function(){toast('Permission denied. Check Firestore rules & admin doc.')})})})})}
+$('out').onclick=function(){sessionStorage.removeItem('gs_demo');(live?auth.signOut():Promise.resolve()).then(function(){location.href='login.html'})};
+</script></body></html>

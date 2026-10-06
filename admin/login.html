@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Login | Green Sparrow</title><meta name="robots" content="noindex,nofollow">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600..800;1,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="admin.css"></head>
+<body><div class="lg">
+ <section class="lg-l">
+  <div class="brand"><img src="../assets/logo.png" alt="" onerror="this.remove()">Green Sparrow</div>
+  <div><h1>Every lead,<br>one <em>calm</em> place.</h1>
+   <p>Enquiries, consultation bookings, contact messages and newsletter sign-ups from your website, all landing here in real time.</p>
+   <div class="pts"><div><i>⚡</i>Live updates the moment a form is submitted</div><div><i>🗂</i>Track every lead: New → Contacted → Won</div><div><i>⬇</i>Export to CSV in one click</div></div></div>
+  <small style="color:#9fb09f">© Green Sparrow Trading LLP · Making Every Brand Popular</small>
+ </section>
+ <section class="lg-r"><div class="box">
+  <h2>Welcome back</h2><p class="sub">Sign in to open your dashboard.</p>
+  <div id="demo" class="note demo hide">Demo mode: Firebase isn't configured yet, so any email/password opens a sample dashboard.</div>
+  <div id="msg" class="note"></div>
+  <form id="f" novalidate>
+   <div class="fld"><label>Email address</label><div class="inp"><input id="em" type="email" placeholder="admin@greensparrow.in" autocomplete="username" required></div></div>
+   <div class="fld"><label>Password</label><div class="inp"><input id="pw" type="password" placeholder="••••••••" autocomplete="current-password" required><button type="button" id="eye">Show</button></div></div>
+   <div style="text-align:right;margin:-4px 0 18px"><button type="button" id="fg" class="lnk">Forgot password?</button></div>
+   <button class="btn full" id="go">Sign in →</button>
+  </form>
+  <p style="text-align:center;margin-top:22px;font-size:13px"><a class="lnk" href="../index.html">← Back to website</a></p>
+ </div></section></div>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="../firebase-config.js"></script>
+<script>
+var $=function(i){return document.getElementById(i)},ok=GS_CONFIGURED(),auth;
+function note(t,c){var m=$('msg');m.textContent=t;m.className='note on '+c}
+if(!ok){$('demo').classList.remove('hide')}else{firebase.initializeApp(GS_FIREBASE);auth=firebase.auth();
+ auth.onAuthStateChanged(function(u){if(u&&!/denied/.test(location.search))location.href='dashboard.html'})}
+if(/denied/.test(location.search))note('This account is not authorised for the dashboard.','err');
+$('eye').onclick=function(){var p=$('pw');p.type=p.type==='password'?'text':'password';this.textContent=p.type==='password'?'Show':'Hide'};
+$('f').onsubmit=function(e){e.preventDefault();var em=$('em').value.trim(),pw=$('pw').value;
+ if(!em||!pw){note('Enter your email and password.','err');return}
+ if(!ok){sessionStorage.setItem('gs_demo','1');location.href='dashboard.html';return}
+ $('go').disabled=true;$('go').textContent='Signing in…';
+ auth.signInWithEmailAndPassword(em,pw).then(function(){location.href='dashboard.html'})
+ .catch(function(e){console.error('Login error:',e.code,e.message);
+   var m={'auth/invalid-credential':'Incorrect email or password, or this user does not exist in Firebase Authentication yet.',
+    'auth/invalid-login-credentials':'Incorrect email or password, or this user does not exist in Firebase Authentication yet.',
+    'auth/user-not-found':'No user with this email. Add it in Firebase Console > Authentication > Users.',
+    'auth/wrong-password':'Wrong password.','auth/invalid-email':'That email address is not valid.',
+    'auth/operation-not-allowed':'Email/Password sign-in is not enabled. Firebase Console > Authentication > Sign-in method > enable Email/Password.',
+    'auth/unauthorized-domain':'This domain is not authorised. Firebase Console > Authentication > Settings > Authorized domains > add it.',
+    'auth/network-request-failed':'Network error. Check your internet connection.','auth/too-many-requests':'Too many attempts. Wait a few minutes and try again.',
+    'auth/api-key-not-valid.-please-pass-a-valid-api-key.':'Invalid API key in firebase-config.js.','auth/configuration-not-found':'Authentication is not set up. Firebase Console > Authentication > Get started.'};
+   note((m[e.code]||'Sign-in failed.')+' ['+(e.code||'unknown')+']','err');$('go').disabled=false;$('go').textContent='Sign in →'})};
+$('fg').onclick=function(){var em=$('em').value.trim();if(!em){note('Type your email first, then click "Forgot password".','err');return}
+ if(!ok){note('Password reset works once Firebase is configured.','err');return}
+ auth.sendPasswordResetEmail(em).then(function(){note('Reset link sent. Check your inbox.','ok')}).catch(function(){note('Could not send reset email.','err')})};
+</script></body></html>
